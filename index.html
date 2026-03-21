@@ -179,38 +179,67 @@
 
   /* ── MOBILE ── */
   @media (max-width: 600px) {
-    header { padding: 0 16px; }
+    header { padding: 0 16px; height: 52px; }
     .logo { font-size: 20px; }
     .nav-tabs { display: none; }
 
-    main { flex-direction: column; height: calc(100vh - 56px); overflow: hidden; }
+    /* main becomes a positioning context, tabs take 56px at bottom */
+    body { overflow: hidden; height: 100dvh; }
+    main {
+      position: relative;
+      height: calc(100dvh - 52px - 56px);
+      overflow: hidden;
+      flex-direction: row;
+    }
 
-    /* all panels stack and fill full screen, only active one shows */
-    .center-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-    .detail-panel { display: flex !important; width: 100%; border-left: none; border-top: 1px solid var(--border); flex: 1; min-height: 0; }
-    .chat-panel { display: flex !important; width: 100%; border-left: none; border-top: 1px solid var(--border); flex: 1; min-height: 0; height: 100%; flex-direction: column; }
+    /* every panel is absolutely positioned, full size, hidden by default */
+    .center-col, .detail-panel, .chat-panel {
+      position: absolute !important;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100% !important;
+      height: 100% !important;
+      display: none !important;
+      flex-direction: column;
+      border: none !important;
+      overflow: hidden;
+    }
+    .center-col.mob-active,
+    .detail-panel.mob-active,
+    .chat-panel.mob-active { display: flex !important; }
 
-    /* hide all panels by default on mobile */
-    .mobile-hidden { display: none !important; }
-
-    /* stats bar compact */
+    /* stats compact */
     .stats-bar { justify-content: space-around; }
-    .stat-item { padding: 10px 16px; }
+    .stat-item { padding: 10px 12px; }
     .stat-val { font-size: 18px; }
 
-    /* search bar compact */
+    /* search bar */
     .search-filter-bar { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
-    .search-wrap { max-width: 100%; }
-    .filter-row { width: 100%; justify-content: space-between; }
-    .filter-btn { flex: 1; padding: 6px 8px; font-size: 12px; }
+    .search-wrap { max-width: 100%; flex: 1 1 100%; }
+    .filter-row { width: 100%; }
+    .filter-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
 
-    /* book grid compact */
-    .book-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-    .book-grid-wrap { padding: 12px; }
+    /* book grid */
+    .book-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .book-grid-wrap { padding: 12px; flex: 1; overflow-y: auto; }
+
+    /* add panel */
+    .add-panel { padding: 20px 16px; }
+    .add-panel-inner { max-width: 100%; }
+    .panel-title { font-size: 22px; margin-bottom: 20px; }
+    .form-grid { grid-template-columns: 1fr; gap: 12px; }
+    .form-group.full { grid-column: 1; }
+
+    /* detail panel */
+    .detail-panel-inner { padding: 20px 16px; }
+
+    /* chat panel — must fill height with input pinned to bottom */
+    .chat-panel { justify-content: space-between; }
+    .chat-messages { flex: 1; overflow-y: auto; min-height: 0; }
+    .chat-input-area { flex-shrink: 0; padding: 10px 12px 12px; }
 
     /* bottom tab bar */
     .mobile-tabs {
-      display: flex !important;
+      display: none;
       position: fixed;
       bottom: 0; left: 0; right: 0;
       height: 56px;
@@ -219,6 +248,7 @@
       backdrop-filter: blur(12px);
       z-index: 200;
     }
+    .mobile-tabs.show { display: flex !important; }
     .mobile-tab {
       flex: 1;
       display: flex;
@@ -239,9 +269,6 @@
     }
     .mobile-tab.active { color: var(--accent); }
     .mobile-tab svg { width: 20px; height: 20px; }
-
-    body { padding-bottom: 56px; }
-    main { height: calc(100vh - 56px - 56px); }
   }
 </style>
 </head>
@@ -648,6 +675,7 @@ window.setFilter = function(f, el) {
 
 window.switchView = function(view) {
   document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active',(i===0&&view==='browse')||(i===1&&view==='add')));
+  if (isMobile()) { mobileTab(view === 'add' ? 'add' : 'books'); return; }
   const browseView = document.getElementById('browseView');
   const addPanel = document.getElementById('addPanel');
   if (view==='add') {
@@ -725,44 +753,40 @@ function isMobile() { return window.innerWidth <= 600; }
 
 window.mobileTab = function mobileTab(tab) {
   if (!isMobile()) return;
-  const browseView  = document.getElementById('browseView');
-  const addPanel    = document.getElementById('addPanel');
+  const centerCol   = document.querySelector('.center-col');
   const detailPanel = document.getElementById('detailPanel');
   const chatPanel   = document.querySelector('.chat-panel');
-  const centerCol   = document.querySelector('.center-col');
+  const browseView  = document.getElementById('browseView');
+  const addPanel    = document.getElementById('addPanel');
 
-  // hide all top-level panels
-  detailPanel.style.display = 'none';
-  chatPanel.style.display   = 'none';
-  centerCol.style.display   = 'none';
-
-  // reset tab styles
+  // deactivate all panels
+  [centerCol, detailPanel, chatPanel].forEach(el => el.classList.remove('mob-active'));
   document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
 
   if (tab === 'books') {
-    centerCol.style.display  = 'flex';
+    centerCol.classList.add('mob-active');
     browseView.style.display = 'flex';
     addPanel.style.display   = 'none';
     addPanel.classList.remove('active');
     document.getElementById('mtab-books').classList.add('active');
   } else if (tab === 'add') {
-    centerCol.style.display  = 'flex';
+    centerCol.classList.add('mob-active');
     browseView.style.display = 'none';
     addPanel.style.display   = 'block';
     addPanel.classList.add('active');
     document.getElementById('mtab-add').classList.add('active');
   } else if (tab === 'detail') {
-    detailPanel.style.display = 'flex';
+    detailPanel.classList.add('mob-active');
     document.getElementById('mtab-detail').classList.add('active');
   } else if (tab === 'chat') {
-    chatPanel.style.display = 'flex';
+    chatPanel.classList.add('mob-active');
     document.getElementById('mtab-chat').classList.add('active');
   }
 }
 
 function initMobile() {
   if (isMobile()) {
-    document.getElementById('mobileTabs').style.display = 'flex';
+    document.getElementById('mobileTabs').classList.add('show');
     mobileTab('books');
   }
 }
@@ -776,15 +800,19 @@ window.selectBook = function(id) {
 window.addEventListener('resize', () => {
   const tabs = document.getElementById('mobileTabs');
   if (isMobile()) {
-    tabs.style.display = 'flex';
+    tabs.classList.add('show');
     mobileTab('books');
   } else {
-    tabs.style.display = 'none';
-    ['browseView','detailPanel'].forEach(id => {
-      const el = document.getElementById(id); if(el) el.classList.remove('mobile-hidden');
+    tabs.classList.remove('show');
+    const centerCol   = document.querySelector('.center-col');
+    const detailPanel = document.getElementById('detailPanel');
+    const chatPanel   = document.querySelector('.chat-panel');
+    [centerCol, detailPanel, chatPanel].forEach(el => {
+      if (el) { el.classList.remove('mob-active'); el.style.display = ''; }
     });
-    document.querySelector('.chat-panel')?.classList.remove('mobile-hidden');
-    document.querySelector('.center-col')?.classList.remove('mobile-hidden');
+    document.getElementById('browseView').style.display = 'flex';
+    document.getElementById('addPanel').style.display   = 'none';
+    document.getElementById('addPanel').classList.remove('active');
   }
 });
 
