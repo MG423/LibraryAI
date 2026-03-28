@@ -288,6 +288,69 @@
 </head>
 <body>
 
+  <!-- AUTH SCREEN -->
+<div id="authScreen" style="position:absolute;inset:0;z-index:999;overflow:hidden;">
+
+  <!-- 🌌 Animated Gradient Background -->
+  <div style="
+    position:absolute;inset:0;
+    background: radial-gradient(circle at 20% 30%, #1e2a4a, transparent 40%),
+                radial-gradient(circle at 80% 70%, #2a1f4a, transparent 40%),
+                linear-gradient(135deg, #0d0f14, #111827);
+    animation: bgMove 10s infinite alternate;
+  "></div>
+
+  <!-- ✨ Floating Glow Orbs -->
+  <div style="position:absolute;width:200px;height:200px;background:#6c8aff;border-radius:50%;filter:blur(100px);top:10%;left:15%;opacity:0.3;"></div>
+  <div style="position:absolute;width:250px;height:250px;background:#a78bfa;border-radius:50%;filter:blur(120px);bottom:10%;right:10%;opacity:0.25;"></div>
+
+  <!-- 📚 Center Login Card -->
+<div style="
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+  width:100%;
+">
+<div style="
+  backdrop-filter: blur(18px);
+  background: rgba(19,22,30,0.75);
+  border:1px solid rgba(255,255,255,0.1);
+  padding:34px;
+  border-radius:16px;
+  width:100%;
+  max-width:340px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+">
+
+      <h2 style="text-align:center;margin-bottom:6px;font-family:'Playfair Display';color:#6c8aff;font-size:26px">
+        Chronicle Nexus
+      </h2>
+      <p style="text-align:center;font-size:12px;color:#8b90a8;margin-bottom:20px">
+        Enter the Realm of Endless Knowledge
+      </p>
+
+      <input id="authEmail" placeholder="Email"
+        style="width:100%;margin-bottom:10px;padding:11px;background:#1a1e28;border:1px solid #333;color:#fff;border-radius:8px">
+
+      <input id="authPassword" type="password" placeholder="Password"
+        style="width:100%;margin-bottom:15px;padding:11px;background:#1a1e28;border:1px solid #333;color:#fff;border-radius:8px">
+
+      <button onclick="signUp()" style="width:100%;margin-bottom:8px;padding:11px;background:#6c8aff;color:#fff;border:none;border-radius:8px;font-weight:600">
+        Sign Up
+      </button>
+
+      <button onclick="signIn()" style="width:100%;padding:11px;background:#34d399;color:#000;border:none;border-radius:8px;font-weight:600">
+        Login
+      </button>
+
+      <p id="authMsg" style="font-size:12px;color:#f87171;margin-top:12px;text-align:center"></p>
+    </div>
+  </div>
+
+</div>
+
 <header>
   <div class="header-inner">
     <div class="logo">
@@ -305,6 +368,9 @@
       <button class="nav-tab active" onclick="switchView('browse')">Browse</button>
       <button class="nav-tab" onclick="switchView('add')">+ Add Book</button>
     </nav>
+    <button onclick="logout()" style="margin-left:16px;padding:6px 12px;background:#f87171;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer">
+  Logout
+</button>
   </div>
 </header>
 
@@ -527,6 +593,58 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const SUPABASE_URL = 'https://kgzmsbvqaokpodtqnqlz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_vMWnk0TFxOeta84wQgphCg_Ho2Vxleu';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ================= AUTH SYSTEM =================
+let currentUser = null;
+
+async function checkAuth() {
+  const { data: { session } } = await sb.auth.getSession();
+
+  if (session) {
+    currentUser = session.user;
+    document.getElementById('authScreen').style.display = 'none';
+    loadBooks();
+  } else {
+    document.getElementById('authScreen').style.display = 'flex';
+  }
+}
+
+window.signUp = async function () {
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+
+  const { error } = await sb.auth.signUp({ email, password });
+
+  if (error) {
+    document.getElementById('authMsg').textContent = error.message;
+  } else {
+    document.getElementById('authMsg').textContent = "Signup successful! Now login.";
+  }
+};
+
+window.signIn = async function () {
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+
+  const { data, error } = await sb.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error) {
+    document.getElementById('authMsg').textContent = error.message;
+  } else {
+    currentUser = data.user;
+    document.getElementById('authScreen').style.display = 'none';
+    showToast("Logged in successfully", "success");
+    loadBooks();
+  }
+};
+
+window.logout = async function () {
+  await sb.auth.signOut();
+  location.reload();
+};
 
 const GENRE_COLORS = {
   Fiction:    { hue:'#6c8aff', bg:'rgba(108,138,255,0.12)' },
@@ -892,7 +1010,7 @@ window.addEventListener('resize', () => {
   }
 });
 
-loadBooks();
+checkAuth();
 if (isMobile()) mobileTab('books');
 </script>
 </body>
