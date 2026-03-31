@@ -699,18 +699,41 @@ window.selectBook=function(id){
   showBookDetail(b);if(isMobile())mobileTab('detail');
 };
 
-function showBookDetail(b){
-  document.getElementById('emptyDetail').style.display='none';
-  const detail=document.getElementById('bookDetail');detail.style.display='block';
-  const avail=isAvailable(b),od=isOverdue(b),idx=books.findIndex(x=>x.id===b.id);
-  detail.innerHTML=`
+function showBookDetail(b) {
+  document.getElementById('emptyDetail').style.display = 'none';
+  const detail = document.getElementById('bookDetail');
+  detail.style.display = 'block';
+
+  const avail = isAvailable(b);
+  const od = isOverdue(b);
+  const idx = books.findIndex(x => x.id === b.id);
+
+  let borrowersHTML = '';
+  if (b.borrowers && Array.isArray(b.borrowers) && b.borrowers.length > 0) {
+    borrowersHTML = `
+      <div class="section-label">Active Borrowers (${b.borrowed}/${b.copies})</div>
+      <div class="detail-grid" style="grid-template-columns:1fr;gap:10px;">
+        ${b.borrowers.slice().reverse().map((br, i) => `
+          <div class="detail-field" style="${i === 0 ? 'border-color:var(--accent3);' : ''}">
+            <div class="field-label">${i === 0 ? 'Most Recent Borrower' : 'Borrower'}</div>
+            <div class="field-value">${br.name}</div>
+            <div class="field-label" style="margin-top:6px">Due Date</div>
+            <div class="field-value" style="color:${new Date(br.due_date) < new Date() ? 'var(--danger)' : 'var(--accent3)'}">
+              ${formatDate(br.due_date)}
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+  }
+
+  detail.innerHTML = `
     <div class="detail-cover" style="background:${coverBg(idx)}">${b.title}</div>
     <div class="detail-title">${b.title}</div><div class="detail-author">by ${b.author}</div>
     <div class="detail-badges">
       <span class="badge badge-genre">${b.genre}</span>
       <span class="badge ${avail?'badge-available':'badge-borrowed'}">${avail?'Available':'Fully Borrowed'}</span>
-      ${od?'<span class="badge badge-overdue">⚠ Overdue</span>':''}`
-  +`</div>
+      ${od?'<span class="badge badge-overdue">⚠ Overdue</span>':''}
+    </div>
     <div class="action-btns">
       ${avail?`<button class="action-btn btn-borrow" onclick="borrowBook('${b.id}')">Borrow</button>`:''}
       ${b.borrowed>0?`<button class="action-btn btn-return" onclick="returnBook('${b.id}')">Return</button>`:''}
@@ -718,37 +741,108 @@ function showBookDetail(b){
     </div>
     <div class="section-label">Description</div>
     <div class="detail-desc">${b.description||'No description available.'}</div>
-    ${b.borrower_name||b.due_date?`<div class="section-label">Borrow Info</div><div class="detail-grid">
-      <div class="detail-field"><div class="field-label">Borrower</div><div class="field-value">${b.borrower_name||'Unknown'}</div></div>
-      <div class="detail-field"><div class="field-label">Due Date</div><div class="field-value" style="color:${od?'var(--danger)':'var(--accent3)'}">${formatDate(b.due_date)}</div></div>
-    </div>`:''}
+    
+    ${borrowersHTML}
+    
     <div class="section-label" style="margin-top:16px">Details</div>
     <div class="detail-grid">
       <div class="detail-field"><div class="field-label">Year</div><div class="field-value">${b.year||'Unknown'}</div></div>
       <div class="detail-field"><div class="field-label">ISBN</div><div class="field-value" style="font-size:11px">${b.isbn||'N/A'}</div></div>
       <div class="detail-field"><div class="field-label">Total Copies</div><div class="field-value">${b.copies}</div></div>
-      <div class="detail-field"><div class="field-label">Available</div><div class="field-value" style="color:${avail?'var(--accent3)':'var(--warning)'}">${b.copies-b.borrowed} / ${b.copies}</div></div>
+      <div class="detail-field"><div class="field-label">Available</div><div class="field-value" style="color:${avail?'var(--accent3)':'var(--warning)'}">${b.copies-(b.borrowed||0)} / ${b.copies}</div></div>
     </div>`;
 }
 
 let pendingBorrowId=null;
+
 window.borrowBook=function(id){const b=books.find(x=>x.id===id);if(!b||!isAvailable(b)){showToast('No copies available','error');return;}pendingBorrowId=id;document.getElementById('modalBookTitle').textContent=b.title;document.getElementById('borrowerName').value='';document.getElementById('borrowModal').classList.add('show');setTimeout(()=>document.getElementById('borrowerName').focus(),100);};
 window.closeBorrowModal=function(){document.getElementById('borrowModal').classList.remove('show');pendingBorrowId=null;};
-window.confirmBorrow=async function(){
-  const name=document.getElementById('borrowerName').value.trim();if(!name){document.getElementById('borrowerName').focus();return;}
-  const b=books.find(x=>x.id===pendingBorrowId);if(!b)return;closeBorrowModal();
-  const due=new Date();due.setDate(due.getDate()+14);
-  const{error}=await sb.from('books').update({borrowed:b.borrowed+1,borrower_name:name,due_date:due.toISOString().split('T')[0]}).eq('id',b.id);
-  if(error){showToast('Failed to update','error');return;}
-  b.borrowed++;b.borrower_name=name;b.due_date=due.toISOString().split('T')[0];
-  showToast(`"${b.title}" borrowed by ${name}!`,'success');renderBookList();updateStats();showBookDetail(b);
+window.confirmBorrow = async function() {
+  const name = document.getElementById('borrowerName').value.trim();
+  if (!name) {
+    document.getElementById('borrowerName').focus();
+    return;
+  }
+
+  const b = books.find(x => x.id === pendingBorrowId);
+  if (!b) return;
+  closeBorrowModal();
+
+  const due = new Date();
+  due.setDate(due.getDate() + 14);
+  const dueStr = due.toISOString().split('T')[0];
+
+  // Stack: add new borrower at the end
+  let currentBorrowers = Array.isArray(b.borrowers) ? [...b.borrowers] : [];
+  currentBorrowers.push({ name, due_date: dueStr });
+
+  const { error } = await sb.from('books').update({
+    borrowed: (b.borrowed || 0) + 1,
+    borrowers: currentBorrowers,
+    borrower_name: name,      // keep original field updated with latest
+    due_date: dueStr
+  }).eq('id', b.id);
+
+  if (error) {
+    showToast('Failed to update', 'error');
+    return;
+  }
+
+  b.borrowed = (b.borrowed || 0) + 1;
+  b.borrowers = currentBorrowers;
+  b.borrower_name = name;
+  b.due_date = dueStr;
+
+  showToast(`"${b.title}" borrowed by ${name}!`, 'success');
+  renderBookList();
+  updateStats();
+  showBookDetail(b);
 };
-window.returnBook=async function(id){
-  const b=books.find(x=>x.id===id);if(!b||b.borrowed===0){showToast('No borrowed copies to return','error');return;}
-  const updates={borrowed:b.borrowed-1};if(b.borrowed-1===0){updates.borrower_name=null;updates.due_date=null;}
-  const{error}=await sb.from('books').update(updates).eq('id',id);if(error){showToast('Failed to update','error');return;}
-  b.borrowed--;if(b.borrowed===0){b.borrower_name=null;b.due_date=null;}
-  showToast('Copy returned!','success');renderBookList();updateStats();showBookDetail(b);
+window.returnBook = async function(id) {
+  const b = books.find(x => x.id === id);
+  if (!b || (b.borrowed || 0) <= 0) {
+    showToast('No borrowed copies to return', 'error');
+    return;
+  }
+
+  // Pop the most recent borrower (stack behavior)
+  let currentBorrowers = Array.isArray(b.borrowers) ? [...b.borrowers] : [];
+  const returnedBorrower = currentBorrowers.pop();
+
+  const newBorrowed = (b.borrowed || 0) - 1;
+
+  let updates = {
+    borrowed: newBorrowed,
+    borrowers: currentBorrowers.length > 0 ? currentBorrowers : null
+  };
+
+  // Update original fields with the new top borrower (or clear)
+  if (currentBorrowers.length > 0) {
+    const latest = currentBorrowers[currentBorrowers.length - 1];
+    updates.borrower_name = latest.name;
+    updates.due_date = latest.due_date;
+  } else {
+    updates.borrower_name = null;
+    updates.due_date = null;
+  }
+
+  const { error } = await sb.from('books').update(updates).eq('id', id);
+  if (error) {
+    showToast('Failed to update', 'error');
+    return;
+  }
+
+  b.borrowed = newBorrowed;
+  b.borrowers = currentBorrowers.length > 0 ? currentBorrowers : null;
+  b.borrower_name = updates.borrower_name;
+  b.due_date = updates.due_date;
+
+  const name = returnedBorrower ? returnedBorrower.name : 'Someone';
+  showToast(`Copy returned by ${name}`, 'success');
+
+  renderBookList();
+  updateStats();
+  showBookDetail(b);
 };
 window.deleteBook=async function(id){
   const b=books.find(x=>x.id===id);if(!b)return;
